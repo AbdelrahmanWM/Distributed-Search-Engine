@@ -4,7 +4,11 @@
 DataBase::DataBase(const std::string &connectionString)
     : m_connection_string(connectionString)
 {
-    mongoc_init();
+    // mongoc_init() must run exactly once per process. DataBase objects are
+    // created per crawler/indexer thread, so guard it with a call-once flag.
+    static std::once_flag mongoc_init_flag;
+    std::call_once(mongoc_init_flag, []
+                   { mongoc_init(); });
 
     m_client = mongoc_client_new(connectionString.c_str());
     if (!m_client)
