@@ -254,7 +254,9 @@ crow::response SearchEngineServer::rootAPIDocumentation(const crow::request &req
 {
     crow::response res;
     res.set_header("Content-Type", "text/html");
-    return (200, getAPIDocumentationHTMLPage());
+    res.code = 200;
+    res.body = getAPIDocumentationHTMLPage();
+    return res;
 }
 
 std::queue<std::string> SearchEngineServer::SeedUrlsJSONToQueue(crow::json::wvalue &list)
