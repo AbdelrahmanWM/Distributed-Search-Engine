@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { OfflineBanner, ToastHost } from './state/services';
 
 export type Realm = 'search' | 'engine';
 
@@ -27,7 +28,9 @@ export default function App() {
         </div>
         <span style={{ width: 120 }} />
       </nav>
+      <OfflineBanner />
       {realm === 'search' ? <div data-testid="search-realm" /> : <div data-testid="engine-realm" />}
+      <ToastHost />
     </div>
   );
 }
