@@ -29,12 +29,15 @@ ThreadPool::~ThreadPool()
 
 void ThreadPool::enqueue(std::function<void()> task)
 {
-    if (stop)
     {
-        std::cerr << "Adding tasks to a disabled bool";
-        return;
+        std::unique_lock<std::mutex> lock(queueMutex);
+        if (stop)
+        {
+            std::cerr << "Adding tasks to a disabled pool";
+            return;
+        }
+        tasks.push(std::move(task));
     }
-    tasks.push(task);
     condition.notify_one();
 }
 
