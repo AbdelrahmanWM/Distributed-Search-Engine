@@ -31,22 +31,30 @@ std::string WordProcessor::normalize(const std::string &token)
 
 std::string WordProcessor::stem(const std::string &word)
 {
-    sb_stemmer *stemmer = sb_stemmer_new("english", nullptr);
-    if (!stemmer)
+    // sb_stemmer is not thread-safe, so keep one instance per thread and
+    // reuse it across calls instead of allocating a new stemmer per word.
+    struct StemmerHolder
+    {
+        sb_stemmer *stemmer = sb_stemmer_new("english", nullptr);
+        ~StemmerHolder()
+        {
+            if (stemmer)
+                sb_stemmer_delete(stemmer);
+        }
+    };
+    thread_local StemmerHolder holder;
+    if (!holder.stemmer)
     {
         throw std::runtime_error("Failed to create stemmer.");
     }
     const sb_symbol *input = reinterpret_cast<const sb_symbol *>(word.c_str());
-    const sb_symbol *stemmed = sb_stemmer_stem(stemmer, input, word.length());
+    const sb_symbol *stemmed = sb_stemmer_stem(holder.stemmer, input, word.length());
 
     if (!stemmed)
     {
-        sb_stemmer_delete(stemmer);
         throw std::runtime_error("Failed to stem word.");
     }
-    std::string stemmed_word{reinterpret_cast<const char *>(stemmed)};
-    sb_stemmer_delete(stemmer);
-    return stemmed_word;
+    return std::string{reinterpret_cast<const char *>(stemmed)};
 }
 
 bool WordProcessor::isStopWord(const std::string &word)
