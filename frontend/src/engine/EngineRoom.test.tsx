@@ -39,7 +39,7 @@ describe('EngineRoom / CrawlerPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /^crawl$/i }));
     expect(screen.getByRole('button', { name: /^crawl$/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /crawl \+ index/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /terminate/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^terminate$/i })).toBeEnabled();
     expect(screen.getByText(/crawling/i)).toBeInTheDocument();
 
     resolveCrawl(new Response('done', { status: 200 }));
@@ -55,5 +55,29 @@ describe('EngineRoom / CrawlerPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /really clear/i }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(fetchMock.mock.calls[0][1].method).toBe('DELETE');
+  });
+
+  it('builds the index with the clear flag', async () => {
+    fetchMock.mockResolvedValue(new Response('Successfully created Inverted Index', { status: 200 }));
+    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+
+    await userEvent.click(screen.getByLabelText(/clear existing index before build/i));
+    await userEvent.click(screen.getByRole('button', { name: /build index/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain('/indexDocuments');
+    expect(JSON.parse(init.body)).toEqual({ clear: 1 });
+  });
+
+  it('terminates indexing with clear-history flag', async () => {
+    fetchMock.mockResolvedValue(new Response('Successfully terminated indexing process', { status: 200 }));
+    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+
+    await userEvent.click(screen.getByRole('button', { name: /terminate indexing/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain('/indexDocuments_terminate');
+    expect(JSON.parse(init.body)).toEqual({ clearIndexHistory: 0 });
   });
 });
