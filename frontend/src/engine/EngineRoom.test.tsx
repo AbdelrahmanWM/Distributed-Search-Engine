@@ -40,7 +40,7 @@ describe('EngineRoom / CrawlerPanel', () => {
     expect(screen.getByRole('button', { name: /^crawl$/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /crawl \+ index/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /^terminate$/i })).toBeEnabled();
-    expect(screen.getByText(/crawling/i)).toBeInTheDocument();
+    expect(screen.getByText(/^crawling…/)).toBeInTheDocument();
 
     resolveCrawl(new Response('done', { status: 200 }));
     await waitFor(() => expect(screen.getByRole('button', { name: /^crawl$/i })).toBeEnabled());
@@ -79,5 +79,61 @@ describe('EngineRoom / CrawlerPanel', () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toContain('/indexDocuments_terminate');
     expect(JSON.parse(init.body)).toEqual({ clearIndexHistory: 0 });
+  });
+
+  it('applies ranker parameters and persists them', async () => {
+    fetchMock.mockResolvedValue(new Response('Successfully set new Ranker parameters', { status: 200 }));
+    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+
+    const k1 = screen.getByLabelText('BM25_K1 value');
+    await userEvent.clear(k1);
+    await userEvent.type(k1, '2.1');
+    await userEvent.click(screen.getByRole('button', { name: /apply parameters/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain('/setRankerParameters');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(init.body)).toEqual({ BM25_K1: 2.1, BM25_B: 0.75, PHRASE_BOOST: 1.2, EXACT_MATCH_WEIGHT: 2 });
+    expect(JSON.parse(localStorage.getItem('distirolis.ranker')!)).toMatchObject({ BM25_K1: 2.1 });
+  });
+
+  it('reset restores ranker defaults in the form', async () => {
+    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+    const k1 = screen.getByLabelText('BM25_K1 value');
+    await userEvent.clear(k1);
+    await userEvent.type(k1, '2.9');
+    await userEvent.click(screen.getByRole('button', { name: /reset to defaults/i }));
+    expect(k1).toHaveValue(1.5);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sets thread count', async () => {
+    fetchMock.mockResolvedValue(new Response('Successfully updated threads number.', { status: 200 }));
+    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+
+    const threads = screen.getByLabelText(/threads value/i);
+    await userEvent.clear(threads);
+    await userEvent.type(threads, '6');
+    await userEvent.click(screen.getByRole('button', { name: /apply threads/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain('/setThreadsNumber');
+    expect(JSON.parse(init.body)).toEqual({ numberOfThreads: 6 });
+  });
+
+  it('changes the engine base url via the connection row', async () => {
+    fetchMock.mockResolvedValue(new Response('ok', { status: 200 }));
+    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+
+    const urlInput = screen.getByLabelText(/engine url/i);
+    await userEvent.clear(urlInput);
+    await userEvent.type(urlInput, 'http://10.0.0.5:8080');
+    await userEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+    await userEvent.click(screen.getByRole('button', { name: /terminate indexing/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls[0][0]).toContain('http://10.0.0.5:8080/');
   });
 });
