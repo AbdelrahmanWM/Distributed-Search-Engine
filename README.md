@@ -41,3 +41,16 @@ To build the project, make sure to have the necessary libraries and tools instal
 4. Compile the project:
    ```bash
    make
+
+## Web UI
+
+A dark web interface for searching and operating the engine lives in `frontend/`.
+
+    cd frontend
+    npm install
+    npm run dev
+
+Open http://localhost:5173 with the engine running on port 8080. The **Search** realm
+queries the index (supports `AND`, `OR`, `NOT`, parentheses, and `"exact phrases"`);
+the **Engine Room** realm drives crawling, indexing, BM25 ranker tuning, and thread
+configuration, with a per-session activity log of every API call.

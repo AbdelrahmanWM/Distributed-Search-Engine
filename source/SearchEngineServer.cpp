@@ -1,4 +1,5 @@
 #include "SearchEngineServer.h"
+#include "crow/middlewares/cors.h"
 #include <functional>
 #include <string>
 
@@ -13,7 +14,15 @@ SearchEngineServer::~SearchEngineServer()
 
 void SearchEngineServer::start()
 {
-    crow::SimpleApp app;
+    crow::App<crow::CORSHandler> app;
+
+    auto &cors = app.get_middleware<crow::CORSHandler>();
+    cors.global()
+        .origin("*")
+        .methods(crow::HTTPMethod::Get, crow::HTTPMethod::Post,
+                 crow::HTTPMethod::Put, crow::HTTPMethod::Delete,
+                 crow::HTTPMethod::Options)
+        .headers("Content-Type");
 
     using std::placeholders::_1;
     CROW_ROUTE(app, "/").methods(crow::HTTPMethod::Get)(std::bind(&SearchEngineServer::rootAPIDocumentation, this, _1));
