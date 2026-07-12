@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import EngineRoom from './engine/EngineRoom';
 import SearchRealm from './search/SearchRealm';
 import { OfflineBanner, ToastHost } from './state/services';
 
@@ -30,7 +31,7 @@ export default function App() {
         <span style={{ width: 120 }} />
       </nav>
       <OfflineBanner />
-      {realm === 'search' ? <SearchRealm /> : <div data-testid="engine-realm" />}
+      {realm === 'search' ? <SearchRealm /> : <EngineRoom />}
       <ToastHost />
     </div>
   );
