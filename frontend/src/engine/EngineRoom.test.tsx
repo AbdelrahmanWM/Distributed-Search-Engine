@@ -136,4 +136,16 @@ describe('EngineRoom / CrawlerPanel', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(fetchMock.mock.calls[0][0]).toContain('http://10.0.0.5:8080/');
   });
+
+  it('shows api calls in the activity log', async () => {
+    fetchMock.mockResolvedValue(new Response('Successfully created Inverted Index', { status: 200 }));
+    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+
+    await userEvent.click(screen.getByRole('button', { name: /build index/i }));
+
+    const log = await screen.findByRole('table');
+    expect(log).toHaveTextContent('/indexDocuments');
+    expect(log).toHaveTextContent('POST');
+    expect(log).toHaveTextContent('Successfully created Inverted Index');
+  });
 });

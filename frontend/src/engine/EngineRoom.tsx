@@ -1,3 +1,4 @@
+import ActivityLogStrip from './ActivityLogStrip';
 import ConnectionRow from './ConnectionRow';
 import CrawlerPanel from './CrawlerPanel';
 import IndexerPanel from './IndexerPanel';
@@ -14,7 +15,7 @@ export default function EngineRoom() {
         <RankerPanel />
         <PerformancePanel />
       </div>
-      {/* ActivityLogStrip (Task 11) */}
+      <ActivityLogStrip />
     </div>
   );
 }
