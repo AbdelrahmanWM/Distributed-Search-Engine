@@ -71,6 +71,17 @@ BM25Ranker::ScoresDocument BM25Ranker::ProcessQuery(const std::string &query)
 
         std::queue<std::pair<PhraseType, std::string>> phrases_queue = WordProcessor::tokenizeQueryPhrases(query);
         getWordsAndPhrasesWeight(phrases_queue);
+        // Boolean operators pop their operands from the phrase stack, so when the
+        // query uses them, bare terms must score onto that stack too.
+        bool hasLogicalOperators = false;
+        for (std::queue<std::pair<PhraseType, std::string>> scan = phrases_queue; !scan.empty(); scan.pop())
+        {
+            if (scan.front().first == PhraseType::LOGICAL_OPERATION)
+            {
+                hasLogicalOperators = true;
+                break;
+            }
+        }
         LogicalOperation op = LogicalOperation::OTHER;
         LogicalOperation currentOp = LogicalOperation::OTHER;
         ScoresDocument operand1;
@@ -80,7 +91,7 @@ BM25Ranker::ScoresDocument BM25Ranker::ProcessQuery(const std::string &query)
         phrases_queue.push(std::make_pair(PhraseType::LOGICAL_OPERATION, "!")); // Weak operator
         while (!phrases_queue.empty())
         {
-            const auto &pair = phrases_queue.front();
+            const auto pair = phrases_queue.front();
             phrases_queue.pop();
 
             if (pair.first == PhraseType::LOGICAL_OPERATION)
@@ -95,6 +106,8 @@ BM25Ranker::ScoresDocument BM25Ranker::ProcessQuery(const std::string &query)
                         operations_stack.pop();
                         if (op == LogicalOperation::NOT)
                         {
+                            if (phrase_documents_scores_stack.empty())
+                                throw std::runtime_error("Malformed query: missing operand for NOT");
                             operand1 = phrase_documents_scores_stack.top();
                             phrase_documents_scores_stack.pop();
                             result = documentNOTOperation(std::move(operand1));
@@ -102,6 +115,8 @@ BM25Ranker::ScoresDocument BM25Ranker::ProcessQuery(const std::string &query)
                         }
                         else if (op == LogicalOperation::AND)
                         {
+                            if (phrase_documents_scores_stack.size() < 2)
+                                throw std::runtime_error("Malformed query: missing operand for AND");
                             operand1 = phrase_documents_scores_stack.top();
                             phrase_documents_scores_stack.pop();
                             operand2 = phrase_documents_scores_stack.top();
@@ -111,6 +126,8 @@ BM25Ranker::ScoresDocument BM25Ranker::ProcessQuery(const std::string &query)
                         }
                         else if (op == LogicalOperation::OR)
                         {
+                            if (phrase_documents_scores_stack.size() < 2)
+                                throw std::runtime_error("Malformed query: missing operand for OR");
                             operand1 = phrase_documents_scores_stack.top();
                             phrase_documents_scores_stack.pop();
                             operand2 = phrase_documents_scores_stack.top();
@@ -141,7 +158,10 @@ BM25Ranker::ScoresDocument BM25Ranker::ProcessQuery(const std::string &query)
             else if (pair.first == PhraseType::TERM)
             {
                 ScoresDocument result = calculateTermScore(pair.second);
-                term_documents_scores_stack.push(std::move(result));
+                if (hasLogicalOperators)
+                    phrase_documents_scores_stack.push(std::move(result));
+                else
+                    term_documents_scores_stack.push(std::move(result));
             }
             else
             {
@@ -158,7 +178,11 @@ BM25Ranker::ScoresDocument BM25Ranker::ProcessQuery(const std::string &query)
             documentsStackCombineOperation(phrase_documents_scores_stack);
         }
 
-        if (term_documents_scores_stack.empty())
+        if (term_documents_scores_stack.empty() && phrase_documents_scores_stack.empty())
+        {
+            return getEmptyScoresDocument();
+        }
+        else if (term_documents_scores_stack.empty())
         {
             return phrase_documents_scores_stack.top();
         }
@@ -614,6 +638,9 @@ std::string BM25Ranker::constructDocumentSnippet(std::string &documentID, std::v
     std::vector<int> documentPositions = documentsPositions[documentID];
     size_t documentPositionsSize = documentPositions.size();
 
+    if (document_vector.empty())
+        return "";
+
     size_t diff = pos.second - pos.first;
     if (diff < 40)
     {
@@ -648,7 +675,7 @@ std::string BM25Ranker::constructDocumentSnippet(std::string &documentID, std::v
             result << document_vector[i];
             index++;
         }
-        else if (i != documentPositions[index])
+        else if (index >= documentPositionsSize || i != documentPositions[index])
         {
             if (partOfExpression)
             {
