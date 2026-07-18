@@ -35,7 +35,7 @@ export default function App() {
         <SearchRealm />
       </div>
       <div style={{ display: realm === 'engine' ? undefined : 'none' }}>
-        <EngineRoom />
+        <EngineRoom visible={realm === 'engine'} />
       </div>
       <ToastHost />
     </div>
