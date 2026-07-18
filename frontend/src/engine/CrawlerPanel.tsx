@@ -156,7 +156,7 @@ export default function CrawlerPanel() {
         </button>
       </div>
       <Toggle label="clear documents history on terminate" checked={clearDocsOnTerminate} onChange={setClearDocsOnTerminate} />
-      <ConfirmButton label="Clear crawl history" onConfirm={clearHistory} disabled={busy !== null} />
+      <ConfirmButton label="Delete all crawled pages" onConfirm={clearHistory} disabled={busy !== null} />
     </Panel>
   );
 }

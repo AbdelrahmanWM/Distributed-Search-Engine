@@ -98,9 +98,9 @@ describe('EngineRoom / CrawlerPanel', () => {
     fetchMock.mockResolvedValue(new Response('Successfully cleared crawl history.', { status: 200 }));
     render(<ServicesProvider><EngineRoom visible={false} /></ServicesProvider>);
 
-    await userEvent.click(screen.getByRole('button', { name: /clear crawl history/i }));
+    await userEvent.click(screen.getByRole('button', { name: /delete all crawled pages/i }));
     expect(fetchMock).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: /really clear/i }));
+    await userEvent.click(screen.getByRole('button', { name: /really delete/i }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(fetchMock.mock.calls[0][1].method).toBe('DELETE');
   });

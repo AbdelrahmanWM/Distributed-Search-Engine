@@ -156,7 +156,7 @@ export function OfflineBanner() {
         color: 'var(--danger)',
       }}
     >
-      Engine offline — nothing is listening at {baseUrl}. Start the engine, then retry your action.
+      Engine offline: nothing is listening at {baseUrl}. Start the engine, then retry your action.
     </div>
   );
 }
