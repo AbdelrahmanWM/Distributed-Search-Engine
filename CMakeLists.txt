@@ -51,6 +51,7 @@ set(SOURCES
     source/DocumentRetriever.cpp
     source/ThreadPool.cpp
     source/SeedURLS.cpp
+    source/LogBuffer.cpp
 )
 
 # Add the executable

@@ -6,6 +6,7 @@
 #include <chrono>
 #include "SeedURLS.h"
 #include "DocumentRetriever.h"
+#include "LogBuffer.h"
 // #include "ThreadPool.h"
 
 static const std::string DATABASE = "SearchEngine";
@@ -57,6 +58,7 @@ static std::queue<std::string> seed_url /*{SeedURLS::readSeedUrls("../seedUrls.t
 	});
 int main(int argc, char *argv[])
 {
+	LogBuffer::install();
 
 	if (argc < 3)
 	{
