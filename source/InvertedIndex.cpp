@@ -10,6 +10,7 @@ InvertedIndex::InvertedIndex(DataBase *&db, const std::string &database_name, co
 
 void InvertedIndex::run(bool clear)
 {
+    std::lock_guard<std::mutex> runLock(m_run_mutex);
     m_stopRequest = false;
     m_clearHistory = false;
     std::vector<bson_t *> documents{};

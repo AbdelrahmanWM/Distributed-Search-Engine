@@ -25,6 +25,7 @@ WebCrawler::~WebCrawler()
 }
 void WebCrawler::run(int maximumNumberOfPagesToCrawl, std::queue<std::string> &seedUrls)
 {
+	std::lock_guard<std::mutex> runLock(m_run_mutex);
 	m_frontier_limit = maximumNumberOfPagesToCrawl;
 	maximumNumberOfPages = maximumNumberOfPagesToCrawl;
 	m_number_of_pages_to_save = std::min(1000, (maximumNumberOfPages / m_number_of_threads));

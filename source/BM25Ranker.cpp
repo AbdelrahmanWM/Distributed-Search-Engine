@@ -2,6 +2,7 @@
 #include "WordProcessor.h"
 #include <math.h>
 #include <algorithm>
+#include <mutex>
 
 const double epsilon = 1e-5;
 double BM25Ranker::TERM_FREQUENCY_WEIGHT = 0.4;
@@ -13,9 +14,13 @@ std::unordered_map<std::string, int> BM25Ranker::wordsAndPhrasesWeights = {};
 int negativeWeightMultiplier = 5; // for negative weight to positive weight ratio on snippet forming
 std::unordered_map<std::string, std::unordered_map<int, std::string>> documentsWordAndPhrasePositions{};
 std::unordered_map<std::string, std::vector<int>> documentsPositions{};
+// The server handles requests on many threads, but ranking works through this file's
+// globals and the ranker's members; serialize every entry point that touches them.
+std::mutex rankerMutex;
 
 void BM25Ranker::setRankerParameters(double BM25_K1, double BM25_B, double PHRASE_BOOST_VALUE, double EXACT_MATCH_WEIGHT)
 {
+    std::lock_guard<std::mutex> lock(rankerMutex);
     BM25Ranker::K1 = BM25_K1;
     BM25Ranker::B = BM25_B;
     BM25Ranker::PHRASE_BOOST = PHRASE_BOOST_VALUE;
@@ -31,6 +36,7 @@ BM25Ranker::BM25Ranker(const std::string &database_name, const std::string &docu
 
 std::vector<SearchResultDocument> BM25Ranker::run(const std::string &query_string, double accuracy)
 {
+    std::lock_guard<std::mutex> lock(rankerMutex);
     try
     {
         documentsWordAndPhrasePositions.clear();
@@ -325,6 +331,7 @@ BM25Ranker::ScoresDocument BM25Ranker::documentNormalizeOperation(const ScoresDo
 
 void BM25Ranker::extractInvertedIndexAndMetadata()
 {
+    std::lock_guard<std::mutex> lock(rankerMutex);
     m_invertedIndex->retrieveExistingMetadataDocument();
     m_term_frequencies = m_invertedIndex->retrieveExistingIndex();
     m_metadata_document = m_invertedIndex->getMetadataDocument();
