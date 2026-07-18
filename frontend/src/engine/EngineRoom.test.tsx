@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ServicesProvider } from '../state/services';
+import { ServicesProvider, ToastHost } from '../state/services';
 import EngineRoom from './EngineRoom';
 
 const fetchMock = vi.fn();
@@ -43,6 +43,40 @@ describe('EngineRoom / CrawlerPanel', () => {
       'https://b.com',
     ]);
     expect(screen.getByText('2 seed URLs')).toBeInTheDocument();
+  });
+
+  it('loads seed urls from a .txt file into the textarea', async () => {
+    fetchMock.mockResolvedValue(new Response('Successfully crawled the pages', { status: 200 }));
+    render(<ServicesProvider><EngineRoom /><ToastHost /></ServicesProvider>);
+
+    const file = new File(['https://one.com\nhttps://two.com\n'], 'seedUrls.txt', { type: 'text/plain' });
+    fireEvent.change(screen.getByLabelText('seed file'), { target: { files: [file] } });
+
+    await screen.findByText('Loaded 2 seed URLs from seedUrls.txt');
+    expect(screen.getByLabelText('seed urls')).toHaveValue('https://one.com\nhttps://two.com');
+    expect(JSON.parse(localStorage.getItem('distirolis.seedUrls')!)).toEqual([
+      'https://one.com',
+      'https://two.com',
+    ]);
+
+    await userEvent.click(screen.getByRole('button', { name: /^crawl$/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).seedUrls).toEqual([
+      'https://one.com',
+      'https://two.com',
+    ]);
+  });
+
+  it('rejects a seed file with no urls and keeps the textarea unchanged', async () => {
+    render(<ServicesProvider><EngineRoom /><ToastHost /></ServicesProvider>);
+
+    const seedBox = screen.getByLabelText('seed urls');
+    const before = (seedBox as HTMLTextAreaElement).value;
+    const file = new File(['   \n\n  '], 'empty.txt', { type: 'text/plain' });
+    fireEvent.change(screen.getByLabelText('seed file'), { target: { files: [file] } });
+
+    await screen.findByText('No seed URLs found in empty.txt.');
+    expect(seedBox).toHaveValue(before);
   });
 
   it('locks crawl buttons while a crawl runs and keeps terminate available', async () => {

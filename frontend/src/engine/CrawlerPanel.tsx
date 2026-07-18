@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { loadJSON, saveJSON } from '../lib/storage';
 import { useServices } from '../state/services';
 import { ConfirmButton, Panel, Toggle } from './primitives';
@@ -7,6 +7,16 @@ type Busy = null | 'crawling' | 'crawling + indexing';
 
 function parseSeeds(text: string): string[] {
   return text.split(/\s+/).filter(Boolean);
+}
+
+// FileReader instead of File.text(): jsdom (used in tests) doesn't implement the latter
+function readFileText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
 }
 
 export default function CrawlerPanel() {
@@ -24,6 +34,21 @@ export default function CrawlerPanel() {
   function updateSeeds(text: string) {
     setSeedsText(text);
     saveJSON('distirolis.seedUrls', parseSeeds(text));
+  }
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function loadSeedFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    const urls = parseSeeds(await readFileText(file));
+    if (urls.length === 0) {
+      notify('error', `No seed URLs found in ${file.name}.`);
+      return;
+    }
+    updateSeeds(urls.join('\n'));
+    notify('ok', `Loaded ${urls.length} seed URLs from ${file.name}`);
   }
 
   async function start(withIndex: boolean) {
@@ -60,7 +85,20 @@ export default function CrawlerPanel() {
   return (
     <Panel title="Crawler" busyLabel={busy}>
       <div>
-        <span className="label">Seed URLs</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span className="label">Seed URLs</span>
+          <button className="chip" onClick={() => fileInputRef.current?.click()}>
+            Load .txt
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt,text/plain"
+            aria-label="seed file"
+            onChange={loadSeedFile}
+            style={{ display: 'none' }}
+          />
+        </div>
         <textarea
           className="input"
           aria-label="seed urls"
