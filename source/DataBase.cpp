@@ -536,6 +536,38 @@ void DataBase::markDocumentsProcessed(std::vector<bson_t *> &documents, const st
     insertOrUpdateManyDocuments(filterAndUpdateDocuments, database_name, collection_name);
 }
 
+void DataBase::resetProcessedFlags(const std::string &database_name, const std::string &collection_name)
+{
+    std::lock_guard<std::mutex> lock(dbMutex);
+    mongoc_collection_t *collection = nullptr;
+    try
+    {
+        collection = mongoc_client_get_collection(m_client, database_name.c_str(), collection_name.c_str());
+        if (!collection)
+        {
+            std::cerr << "Failed to get collection: " << collection_name << std::endl;
+            return;
+        }
+        bson_t *filter = bson_new();
+        bson_t *update = BCON_NEW("$set", "{", "processed", BCON_BOOL(false), "}");
+        bson_error_t error;
+        if (!mongoc_collection_update_many(collection, filter, update, nullptr, nullptr, &error))
+        {
+            std::cerr << "Failed to reset processed flags: " << error.message << std::endl;
+        }
+        bson_destroy(filter);
+        bson_destroy(update);
+    }
+    catch (std::exception &ex)
+    {
+        std::cerr << "Exception: " << ex.what() << std::endl;
+    }
+    if (collection)
+    {
+        mongoc_collection_destroy(collection);
+    }
+}
+
 std::string DataBase::extractContentFromIndexDocument(const bson_t *document)
 {
     std::vector<std::string> fields{"title", "description", "content", "keywords"};

@@ -21,6 +21,8 @@ void InvertedIndex::run(bool clear)
         if (clear)
         {
             m_db->clearCollection(m_database_name, m_collection_name);
+            // otherwise a clear rebuild indexes nothing: every document is still marked processed
+            m_db->resetProcessedFlags(m_database_name, m_documents_collection_name);
         }
         else
         {
@@ -29,7 +31,7 @@ void InvertedIndex::run(bool clear)
         }
         int numberOfDocuments = m_db->getCollectionDocumentCount(m_database_name, m_documents_collection_name, BCON_NEW("processed", BCON_BOOL(false)));
 
-        int numberOfDocumentsToIndex = std::min(1000, (numberOfDocuments / (m_number_of_threads)));
+        int numberOfDocumentsToIndex = std::max(1, std::min(1000, numberOfDocuments / m_number_of_threads));
         {
             ThreadPool thread_pool{m_number_of_threads};
             std::vector<bson_t *> documents;
@@ -42,7 +44,7 @@ void InvertedIndex::run(bool clear)
                 documents = m_db->getLimitedDocuments(m_database_name, m_documents_collection_name, numberOfDocumentsToIndex, BCON_NEW("processed", BCON_BOOL(false)));
                 if (documents.empty())
                 {
-                    return;
+                    break; // returning here skipped saveMetadataDocument, leaving stale metadata
                 }
                 m_db->markDocumentsProcessed(documents, m_database_name, m_documents_collection_name);
                 thread_pool.enqueue([this, documents]
