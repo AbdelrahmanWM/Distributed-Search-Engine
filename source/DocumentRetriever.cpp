@@ -17,9 +17,20 @@ std::vector<SearchResultDocument> DocumentRetriever::getScoresDocuments(const st
 
     std::cout << "fetched: " << fetchedDocuments.size() << '\n';
 
+    // getDocumentsByIds returns documents in database order, so re-emit them in the
+    // ranked order the caller passed in
+    std::unordered_map<std::string, Document> documentsById;
     for (int i = 0; i < fetchedDocuments.size(); i++)
     {
         Document documentObject = m_db->extractDocument(fetchedDocuments[i]);
+        documentsById[documentObject._id] = documentObject;
+    }
+    for (const auto &pair : scoresDocuments)
+    {
+        auto it = documentsById.find(pair.first);
+        if (it == documentsById.end())
+            continue;
+        const Document &documentObject = it->second;
         SearchResultDocument resultDocument{documentObject._id, documentObject.title, documentObject.content, documentObject.url, scoresMap[documentObject._id]};
         results.push_back(resultDocument);
     }

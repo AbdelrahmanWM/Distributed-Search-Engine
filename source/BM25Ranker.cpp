@@ -619,15 +619,17 @@ std::pair<int, int> BM25Ranker::getBestDocumentSnippetPositions(std::string &doc
     {
         prefixSums[i + 1] = prefixSums[i] + weights[positionsToWords[documentPositions[i]]];
     }
+    // maxPos holds token positions in the document (what constructDocumentSnippet
+    // expects), so windows are bounded by token distance, not hit count
     for (size_t i = 0; i < documentPositions.size(); i++)
     {
-        for (size_t j = i; j < documentPositions.size() && j - i <= 40; j++)
+        for (size_t j = i; j < documentPositions.size() && documentPositions[j] - documentPositions[i] <= 40; j++)
         {
             int weight = prefixSums[j + 1] - prefixSums[i];
             if (weight > maxWeight)
             {
                 maxWeight = weight;
-                maxPos = {i, j};
+                maxPos = {documentPositions[i], documentPositions[j]};
             }
         }
     }
