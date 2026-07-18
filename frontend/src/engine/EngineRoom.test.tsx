@@ -16,9 +16,9 @@ describe('EngineRoom / CrawlerPanel', () => {
     fetchMock.mockResolvedValue(new Response('Successfully crawled the pages', { status: 200 }));
     render(<ServicesProvider><EngineRoom /></ServicesProvider>);
 
-    const seedInput = screen.getByPlaceholderText('https://…');
-    await userEvent.clear(seedInput);
-    await userEvent.type(seedInput, 'https://example.com');
+    const seedBox = screen.getByLabelText('seed urls');
+    await userEvent.clear(seedBox);
+    await userEvent.type(seedBox, 'https://example.com');
     const pages = screen.getByLabelText(/pages/i);
     await userEvent.clear(pages);
     await userEvent.type(pages, '25');
@@ -29,6 +29,20 @@ describe('EngineRoom / CrawlerPanel', () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toContain('/crawl');
     expect(JSON.parse(init.body)).toEqual({ seedUrls: ['https://example.com'], numberOfPages: 25 });
+  });
+
+  it('persists textarea seeds to localStorage as an array and shows a count', async () => {
+    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+
+    const seedBox = screen.getByLabelText('seed urls');
+    await userEvent.clear(seedBox);
+    await userEvent.type(seedBox, 'https://a.com{enter}https://b.com');
+
+    expect(JSON.parse(localStorage.getItem('distirolis.seedUrls')!)).toEqual([
+      'https://a.com',
+      'https://b.com',
+    ]);
+    expect(screen.getByText('2 seed URLs')).toBeInTheDocument();
   });
 
   it('locks crawl buttons while a crawl runs and keeps terminate available', async () => {
