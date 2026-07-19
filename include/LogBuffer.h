@@ -13,8 +13,8 @@ struct LogLine
     std::string text;
 };
 
-// Tees std::cout to the console while keeping the last MAX_LINES lines in memory
-// so the server can expose them via GET /logs.
+// Tees std::cout and std::cerr to the console while keeping the last MAX_LINES
+// lines in a shared in-memory store so the server can expose them via GET /logs.
 class LogBuffer : public std::streambuf
 {
 public:
@@ -28,15 +28,15 @@ protected:
 
 private:
     LogBuffer() = default;
-    static LogBuffer &instance();
     void put(char c);
-    void commitLine(); // caller must hold m_mutex
+    void commitLine(); // caller must hold storeMutex()
+
+    static std::mutex &storeMutex();
+    static std::deque<LogLine> &store();
+    static long &nextId();
 
     std::streambuf *m_forward = nullptr;
     std::string m_current;
-    std::deque<LogLine> m_lines;
-    long m_nextId = 1;
-    std::mutex m_mutex;
     static const size_t MAX_LINES = 500;
 };
 

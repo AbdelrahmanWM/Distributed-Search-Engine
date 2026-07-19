@@ -2,18 +2,35 @@
 #include <ctime>
 #include <iostream>
 
-LogBuffer &LogBuffer::instance()
+std::mutex &LogBuffer::storeMutex()
 {
-    static LogBuffer buffer;
-    return buffer;
+    static std::mutex mutex;
+    return mutex;
+}
+
+std::deque<LogLine> &LogBuffer::store()
+{
+    static std::deque<LogLine> lines;
+    return lines;
+}
+
+long &LogBuffer::nextId()
+{
+    static long id = 1;
+    return id;
 }
 
 void LogBuffer::install()
 {
-    LogBuffer &buffer = instance();
-    if (buffer.m_forward == nullptr)
+    static LogBuffer coutBuffer;
+    static LogBuffer cerrBuffer;
+    if (coutBuffer.m_forward == nullptr)
     {
-        buffer.m_forward = std::cout.rdbuf(&buffer);
+        coutBuffer.m_forward = std::cout.rdbuf(&coutBuffer);
+    }
+    if (cerrBuffer.m_forward == nullptr)
+    {
+        cerrBuffer.m_forward = std::cerr.rdbuf(&cerrBuffer);
     }
 }
 
@@ -38,13 +55,13 @@ std::streamsize LogBuffer::xsputn(const char *s, std::streamsize n)
 
 int LogBuffer::sync()
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::mutex> lock(storeMutex());
     return m_forward->pubsync();
 }
 
 void LogBuffer::put(char c)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::mutex> lock(storeMutex());
     m_forward->sputc(c);
     if (c == '\n')
     {
@@ -63,10 +80,10 @@ void LogBuffer::commitLine()
         std::time_t now = std::time(nullptr);
         char stamp[16] = "";
         std::strftime(stamp, sizeof(stamp), "%H:%M:%S", std::localtime(&now));
-        m_lines.push_back({m_nextId++, stamp, m_current});
-        if (m_lines.size() > MAX_LINES)
+        store().push_back({nextId()++, stamp, m_current});
+        if (store().size() > MAX_LINES)
         {
-            m_lines.pop_front();
+            store().pop_front();
         }
     }
     m_current.clear();
@@ -74,10 +91,9 @@ void LogBuffer::commitLine()
 
 std::vector<LogLine> LogBuffer::linesAfter(long afterId)
 {
-    LogBuffer &buffer = instance();
-    std::lock_guard<std::mutex> lock(buffer.m_mutex);
+    std::lock_guard<std::mutex> lock(storeMutex());
     std::vector<LogLine> result;
-    for (const LogLine &line : buffer.m_lines)
+    for (const LogLine &line : store())
     {
         if (line.id > afterId)
         {

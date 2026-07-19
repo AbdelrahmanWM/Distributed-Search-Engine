@@ -16,6 +16,9 @@ SearchEngineServer::~SearchEngineServer()
 void SearchEngineServer::start()
 {
     crow::App<crow::CORSHandler> app;
+    // stderr is teed into /logs; without this, Crow's per-request INFO lines would
+    // make the logs panel record its own polling forever
+    app.loglevel(crow::LogLevel::Warning);
 
     auto &cors = app.get_middleware<crow::CORSHandler>();
     cors.global()
