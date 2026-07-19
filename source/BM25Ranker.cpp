@@ -243,7 +243,8 @@ BM25Ranker::ScoresDocument BM25Ranker::calculatePhraseScore(const std::string &p
 
 BM25Ranker::ScoresDocument BM25Ranker::calculateTermScore(const std::string &term)
 {
-    return calculateBM25ScoreForTerm(term);
+    // the index stores normalized + stemmed tokens, so look the query term up the same way
+    return calculateBM25ScoreForTerm(WordProcessor::stem(WordProcessor::normalize(term)));
 }
 
 BM25Ranker::ScoresDocument BM25Ranker::documentNOTOperation(const ScoresDocument &operand)
@@ -576,9 +577,13 @@ void BM25Ranker::getWordsAndPhrasesWeight(std::queue<std::pair<PhraseType, std::
                             {
                                 op = GetLogicalOperation(pair.second);
                             }
+                            else if (pair.first == PhraseType::PHRASE)
+                            {
+                                wordsAndPhrasesWeights[WordProcessor::normalizeQuotedPhrase(pair.second)] = -1 * negativeWeightMultiplier;
+                            }
                             else
                             {
-                                wordsAndPhrasesWeights[pair.second] = -1 * negativeWeightMultiplier;
+                                wordsAndPhrasesWeights[WordProcessor::stem(WordProcessor::normalize(pair.second))] = -1 * negativeWeightMultiplier;
                             }
                             i++;
                         }
@@ -592,7 +597,7 @@ void BM25Ranker::getWordsAndPhrasesWeight(std::queue<std::pair<PhraseType, std::
                 }
                 else if (pair.first == PhraseType::TERM)
                 {
-                    wordsAndPhrasesWeights[pair.second] = -1 * negativeWeightMultiplier;
+                    wordsAndPhrasesWeights[WordProcessor::stem(WordProcessor::normalize(pair.second))] = -1 * negativeWeightMultiplier;
                     negativeFlag = false;
                 }
             }
@@ -602,9 +607,13 @@ void BM25Ranker::getWordsAndPhrasesWeight(std::queue<std::pair<PhraseType, std::
                 {
                     negativeFlag = true;
                 }
-                else if (pair.first == PhraseType::TERM || pair.first == PhraseType::PHRASE)
+                else if (pair.first == PhraseType::PHRASE)
                 {
-                    wordsAndPhrasesWeights[pair.second] = 1;
+                    wordsAndPhrasesWeights[WordProcessor::normalizeQuotedPhrase(pair.second)] = 1;
+                }
+                else if (pair.first == PhraseType::TERM)
+                {
+                    wordsAndPhrasesWeights[WordProcessor::stem(WordProcessor::normalize(pair.second))] = 1;
                 }
             }
         }
