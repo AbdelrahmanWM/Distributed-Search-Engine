@@ -30,6 +30,13 @@ void InvertedIndex::run(bool clear)
             retrieveExistingMetadataDocument();
         }
         int numberOfDocuments = m_db->getCollectionDocumentCount(m_database_name, m_documents_collection_name, BCON_NEW("processed", BCON_BOOL(false)));
+        if (numberOfDocuments < 0)
+        {
+            // the count only fails when the database is unreachable; continuing
+            // would overwrite good metadata with an empty document
+            std::cerr << "Aborting index run: cannot reach the database.\n";
+            return;
+        }
 
         int numberOfDocumentsToIndex = std::max(1, std::min(1000, numberOfDocuments / m_number_of_threads));
         {
@@ -298,6 +305,13 @@ void InvertedIndex::extractInvertedIndexDocument(bson_t *&document, std::unorder
 
 void InvertedIndex::saveMetadataDocument()
 {
+    if (m_document_metadata.total_documents <= 0 && m_document_metadata.doc_lengths.empty())
+    {
+        // clear-then-insert of empty metadata would destroy the stored document,
+        // which happens when a run starts while the database is unreachable
+        std::cerr << "Skipping metadata save: nothing to write.\n";
+        return;
+    }
     bson_t *bson = bson_new();
 
     try

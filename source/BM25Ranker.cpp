@@ -334,7 +334,15 @@ void BM25Ranker::extractInvertedIndexAndMetadata()
 {
     std::lock_guard<std::mutex> lock(rankerMutex);
     m_invertedIndex->retrieveExistingMetadataDocument();
-    m_term_frequencies = m_invertedIndex->retrieveExistingIndex();
+    std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>> freshIndex = m_invertedIndex->retrieveExistingIndex();
+    if (freshIndex.empty() && !m_term_frequencies.empty())
+    {
+        // an unreachable database loads as an empty index; keep serving the
+        // snapshot already in memory instead of playing dead until a restart
+        std::cerr << "Index reload returned nothing; keeping the previous in-memory index.\n";
+        return;
+    }
+    m_term_frequencies = std::move(freshIndex);
     m_metadata_document = m_invertedIndex->getMetadataDocument();
     std::cout << "term frequencies: " << m_term_frequencies.size() << '\n';
     std::cout << "metadata document: " << m_metadata_document.total_documents << '\n';

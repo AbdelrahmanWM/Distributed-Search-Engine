@@ -20,10 +20,16 @@ long &LogBuffer::nextId()
     return id;
 }
 
+std::string &LogBuffer::currentLine()
+{
+    static thread_local std::string lines[2];
+    return lines[m_slot];
+}
+
 void LogBuffer::install()
 {
-    static LogBuffer coutBuffer;
-    static LogBuffer cerrBuffer;
+    static LogBuffer coutBuffer{0};
+    static LogBuffer cerrBuffer{1};
     if (coutBuffer.m_forward == nullptr)
     {
         coutBuffer.m_forward = std::cout.rdbuf(&coutBuffer);
@@ -61,32 +67,35 @@ int LogBuffer::sync()
 
 void LogBuffer::put(char c)
 {
-    std::lock_guard<std::mutex> lock(storeMutex());
-    m_forward->sputc(c);
+    std::string &line = currentLine();
     if (c == '\n')
     {
-        commitLine();
+        std::lock_guard<std::mutex> lock(storeMutex());
+        line += c;
+        m_forward->sputn(line.c_str(), line.size());
+        line.pop_back();
+        commitLine(line);
     }
     else if (c != '\r')
     {
-        m_current += c;
+        line += c;
     }
 }
 
-void LogBuffer::commitLine()
+void LogBuffer::commitLine(std::string &line)
 {
-    if (!m_current.empty())
+    if (!line.empty())
     {
         std::time_t now = std::time(nullptr);
         char stamp[16] = "";
         std::strftime(stamp, sizeof(stamp), "%H:%M:%S", std::localtime(&now));
-        store().push_back({nextId()++, stamp, m_current});
+        store().push_back({nextId()++, stamp, line});
         if (store().size() > MAX_LINES)
         {
             store().pop_front();
         }
     }
-    m_current.clear();
+    line.clear();
 }
 
 std::vector<LogLine> LogBuffer::linesAfter(long afterId)

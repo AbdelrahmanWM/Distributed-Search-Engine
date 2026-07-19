@@ -27,16 +27,17 @@ protected:
     int sync() override;
 
 private:
-    LogBuffer() = default;
+    explicit LogBuffer(int slot) : m_slot(slot) {}
     void put(char c);
-    void commitLine(); // caller must hold storeMutex()
+    static void commitLine(std::string &line); // caller must hold storeMutex()
 
     static std::mutex &storeMutex();
     static std::deque<LogLine> &store();
     static long &nextId();
+    std::string &currentLine(); // per-thread, so concurrent writers cannot garble each other
 
     std::streambuf *m_forward = nullptr;
-    std::string m_current;
+    int m_slot; // 0 = cout, 1 = cerr
     static const size_t MAX_LINES = 500;
 };
 
