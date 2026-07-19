@@ -73,7 +73,7 @@ export default function RankerPanel() {
         </button>
       </div>
       <p style={{ fontSize: 11, color: 'var(--text-dimmer)', margin: 0 }}>
-        {applied ? 'Applied to the engine.' : 'Values shown are as last applied by this browser — the engine has no read-back API.'}
+        {applied ? 'Applied to the engine.' : 'Values shown are as last applied by this browser; the engine has no read-back API.'}
       </p>
     </Panel>
   );

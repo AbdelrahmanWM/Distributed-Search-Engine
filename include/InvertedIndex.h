@@ -53,6 +53,7 @@ private:
     std::string m_metadata_collection_name;
     std::mutex m_metadata_document_mutex;
     std::mutex indexMutex;
+    std::mutex m_run_mutex; // serializes whole index builds; terminate() stays lock-free
     std::atomic<bool> m_stopRequest{};
     std::atomic<bool> m_clearHistory{};
     int m_number_of_threads;

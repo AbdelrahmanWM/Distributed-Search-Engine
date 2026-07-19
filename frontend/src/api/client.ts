@@ -12,6 +12,12 @@ export interface RankerParams {
   EXACT_MATCH_WEIGHT: number;
 }
 
+export interface EngineLogLine {
+  id: number;
+  time: string;
+  text: string;
+}
+
 export class ApiError extends Error {
   status: number;
 
@@ -74,6 +80,11 @@ export class ApiClient {
 
   clearCrawlHistory(): Promise<string> {
     return this.request('DELETE', '/clearCrawlHistory');
+  }
+
+  async logs(after: number): Promise<EngineLogLine[]> {
+    const text = await this.request('GET', `/logs?after=${encodeURIComponent(after)}`);
+    return (JSON.parse(text) as { lines?: EngineLogLine[] }).lines ?? [];
   }
 
   private async request(method: string, path: string, body?: unknown): Promise<string> {

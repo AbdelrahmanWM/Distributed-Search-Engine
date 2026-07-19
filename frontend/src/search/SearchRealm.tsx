@@ -129,7 +129,7 @@ export default function SearchRealm() {
             </p>
             {results.length === 0 && (
               <p style={{ color: 'var(--text-dim)', textAlign: 'center', marginTop: 40 }}>
-                No results — the index may be empty. Crawl and index some pages in the Engine Room.
+                No results. The index may be empty; crawl and index some pages in the Engine Room.
               </p>
             )}
             {results.map((r, i) => (
@@ -139,7 +139,7 @@ export default function SearchRealm() {
         )}
         {status === 'error' && (
           <p style={{ color: 'var(--danger)', textAlign: 'center', marginTop: 40 }}>
-            Search failed — see the toast or the Engine Room activity log.
+            Search failed. See the toast or the Engine Room activity log.
           </p>
         )}
       </div>

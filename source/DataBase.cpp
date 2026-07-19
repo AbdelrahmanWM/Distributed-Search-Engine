@@ -197,7 +197,7 @@ void DataBase::insertManyDocuments(std::vector<bson_t *> &documents, const std::
 }
 void DataBase::insertOrUpdateManyDocuments(std::vector<std::pair<bson_t *, bson_t *>> &filterAndUpdateDocuments, const std::string &database_name, const std::string &collection_name)
 {
-    // std::lock_guard<std::mutex> lock(dbMutex);
+    std::lock_guard<std::mutex> lock(dbMutex);
     if (filterAndUpdateDocuments.empty())
     {
         std::cout << "No documents to insert or update\n";
@@ -334,6 +334,7 @@ std::vector<bson_t *> DataBase::getAllDocuments(const std::string &database_name
 
 std::vector<bson_t *> DataBase::getLimitedDocuments(const std::string &database_name, const std::string &collection_name, int limit, bson_t *filters)
 {
+    std::lock_guard<std::mutex> lock(dbMutex);
     bson_t *opts = bson_new();
     BSON_APPEND_INT64(opts, "limit", limit);
     mongoc_collection_t *collection = nullptr;
@@ -347,6 +348,12 @@ std::vector<bson_t *> DataBase::getLimitedDocuments(const std::string &database_
             return std::vector<bson_t *>{};
         }
         mongoc_cursor_t *cursor = mongoc_collection_find_with_opts(collection, filters, opts, NULL);
+        if (!cursor)
+        {
+            std::cerr << "Failed to get cursor to collection: " << collection_name << "\n";
+            mongoc_collection_destroy(collection);
+            return std::vector<bson_t *>{};
+        }
         std::vector<bson_t *> documents;
         const bson_t *doc;
         bson_error_t error;
@@ -369,6 +376,7 @@ std::vector<bson_t *> DataBase::getLimitedDocuments(const std::string &database_
     {
         std::cerr << ex.what();
     }
+    return std::vector<bson_t *>{};
 }
 
 int DataBase::getCollectionDocumentCount(const std::string &database_name, const std::string &collection_name, bson_t *filter)
@@ -525,8 +533,39 @@ void DataBase::markDocumentsProcessed(std::vector<bson_t *> &documents, const st
         }
     }
 
-    mongoc_collection_t *collection = mongoc_client_get_collection(m_client, database_name.c_str(), collection_name.c_str());
     insertOrUpdateManyDocuments(filterAndUpdateDocuments, database_name, collection_name);
+}
+
+void DataBase::resetProcessedFlags(const std::string &database_name, const std::string &collection_name)
+{
+    std::lock_guard<std::mutex> lock(dbMutex);
+    mongoc_collection_t *collection = nullptr;
+    try
+    {
+        collection = mongoc_client_get_collection(m_client, database_name.c_str(), collection_name.c_str());
+        if (!collection)
+        {
+            std::cerr << "Failed to get collection: " << collection_name << std::endl;
+            return;
+        }
+        bson_t *filter = bson_new();
+        bson_t *update = BCON_NEW("$set", "{", "processed", BCON_BOOL(false), "}");
+        bson_error_t error;
+        if (!mongoc_collection_update_many(collection, filter, update, nullptr, nullptr, &error))
+        {
+            std::cerr << "Failed to reset processed flags: " << error.message << std::endl;
+        }
+        bson_destroy(filter);
+        bson_destroy(update);
+    }
+    catch (std::exception &ex)
+    {
+        std::cerr << "Exception: " << ex.what() << std::endl;
+    }
+    if (collection)
+    {
+        mongoc_collection_destroy(collection);
+    }
 }
 
 std::string DataBase::extractContentFromIndexDocument(const bson_t *document)

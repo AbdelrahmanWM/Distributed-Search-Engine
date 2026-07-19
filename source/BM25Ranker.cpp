@@ -2,6 +2,7 @@
 #include "WordProcessor.h"
 #include <math.h>
 #include <algorithm>
+#include <mutex>
 
 const double epsilon = 1e-5;
 double BM25Ranker::TERM_FREQUENCY_WEIGHT = 0.4;
@@ -13,9 +14,13 @@ std::unordered_map<std::string, int> BM25Ranker::wordsAndPhrasesWeights = {};
 int negativeWeightMultiplier = 5; // for negative weight to positive weight ratio on snippet forming
 std::unordered_map<std::string, std::unordered_map<int, std::string>> documentsWordAndPhrasePositions{};
 std::unordered_map<std::string, std::vector<int>> documentsPositions{};
+// The server handles requests on many threads, but ranking works through this file's
+// globals and the ranker's members; serialize every entry point that touches them.
+std::mutex rankerMutex;
 
 void BM25Ranker::setRankerParameters(double BM25_K1, double BM25_B, double PHRASE_BOOST_VALUE, double EXACT_MATCH_WEIGHT)
 {
+    std::lock_guard<std::mutex> lock(rankerMutex);
     BM25Ranker::K1 = BM25_K1;
     BM25Ranker::B = BM25_B;
     BM25Ranker::PHRASE_BOOST = PHRASE_BOOST_VALUE;
@@ -31,6 +36,7 @@ BM25Ranker::BM25Ranker(const std::string &database_name, const std::string &docu
 
 std::vector<SearchResultDocument> BM25Ranker::run(const std::string &query_string, double accuracy)
 {
+    std::lock_guard<std::mutex> lock(rankerMutex);
     try
     {
         documentsWordAndPhrasePositions.clear();
@@ -237,7 +243,8 @@ BM25Ranker::ScoresDocument BM25Ranker::calculatePhraseScore(const std::string &p
 
 BM25Ranker::ScoresDocument BM25Ranker::calculateTermScore(const std::string &term)
 {
-    return calculateBM25ScoreForTerm(term);
+    // the index stores normalized + stemmed tokens, so look the query term up the same way
+    return calculateBM25ScoreForTerm(WordProcessor::stem(WordProcessor::normalize(term)));
 }
 
 BM25Ranker::ScoresDocument BM25Ranker::documentNOTOperation(const ScoresDocument &operand)
@@ -325,8 +332,17 @@ BM25Ranker::ScoresDocument BM25Ranker::documentNormalizeOperation(const ScoresDo
 
 void BM25Ranker::extractInvertedIndexAndMetadata()
 {
+    std::lock_guard<std::mutex> lock(rankerMutex);
     m_invertedIndex->retrieveExistingMetadataDocument();
-    m_term_frequencies = m_invertedIndex->retrieveExistingIndex();
+    std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>> freshIndex = m_invertedIndex->retrieveExistingIndex();
+    if (freshIndex.empty() && !m_term_frequencies.empty())
+    {
+        // an unreachable database loads as an empty index; keep serving the
+        // snapshot already in memory instead of playing dead until a restart
+        std::cerr << "Index reload returned nothing; keeping the previous in-memory index.\n";
+        return;
+    }
+    m_term_frequencies = std::move(freshIndex);
     m_metadata_document = m_invertedIndex->getMetadataDocument();
     std::cout << "term frequencies: " << m_term_frequencies.size() << '\n';
     std::cout << "metadata document: " << m_metadata_document.total_documents << '\n';
@@ -569,9 +585,13 @@ void BM25Ranker::getWordsAndPhrasesWeight(std::queue<std::pair<PhraseType, std::
                             {
                                 op = GetLogicalOperation(pair.second);
                             }
+                            else if (pair.first == PhraseType::PHRASE)
+                            {
+                                wordsAndPhrasesWeights[WordProcessor::normalizeQuotedPhrase(pair.second)] = -1 * negativeWeightMultiplier;
+                            }
                             else
                             {
-                                wordsAndPhrasesWeights[pair.second] = -1 * negativeWeightMultiplier;
+                                wordsAndPhrasesWeights[WordProcessor::stem(WordProcessor::normalize(pair.second))] = -1 * negativeWeightMultiplier;
                             }
                             i++;
                         }
@@ -585,7 +605,7 @@ void BM25Ranker::getWordsAndPhrasesWeight(std::queue<std::pair<PhraseType, std::
                 }
                 else if (pair.first == PhraseType::TERM)
                 {
-                    wordsAndPhrasesWeights[pair.second] = -1 * negativeWeightMultiplier;
+                    wordsAndPhrasesWeights[WordProcessor::stem(WordProcessor::normalize(pair.second))] = -1 * negativeWeightMultiplier;
                     negativeFlag = false;
                 }
             }
@@ -595,9 +615,13 @@ void BM25Ranker::getWordsAndPhrasesWeight(std::queue<std::pair<PhraseType, std::
                 {
                     negativeFlag = true;
                 }
-                else if (pair.first == PhraseType::TERM || pair.first == PhraseType::PHRASE)
+                else if (pair.first == PhraseType::PHRASE)
                 {
-                    wordsAndPhrasesWeights[pair.second] = 1;
+                    wordsAndPhrasesWeights[WordProcessor::normalizeQuotedPhrase(pair.second)] = 1;
+                }
+                else if (pair.first == PhraseType::TERM)
+                {
+                    wordsAndPhrasesWeights[WordProcessor::stem(WordProcessor::normalize(pair.second))] = 1;
                 }
             }
         }
@@ -619,15 +643,17 @@ std::pair<int, int> BM25Ranker::getBestDocumentSnippetPositions(std::string &doc
     {
         prefixSums[i + 1] = prefixSums[i] + weights[positionsToWords[documentPositions[i]]];
     }
+    // maxPos holds token positions in the document (what constructDocumentSnippet
+    // expects), so windows are bounded by token distance, not hit count
     for (size_t i = 0; i < documentPositions.size(); i++)
     {
-        for (size_t j = i; j < documentPositions.size() && j - i <= 40; j++)
+        for (size_t j = i; j < documentPositions.size() && documentPositions[j] - documentPositions[i] <= 40; j++)
         {
             int weight = prefixSums[j + 1] - prefixSums[i];
             if (weight > maxWeight)
             {
                 maxWeight = weight;
-                maxPos = {i, j};
+                maxPos = {documentPositions[i], documentPositions[j]};
             }
         }
     }

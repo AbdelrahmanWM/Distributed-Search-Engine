@@ -30,6 +30,7 @@ public:
     void clearCollection(const std::string &database_name, const std::string collection_name);
     void saveInvertedIndex(const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>> &index, const std::string &database_name, const std::string collection_name);
     void markDocumentsProcessed(std::vector<bson_t *>&documents, const std::string &database_name, const std::string &collection_name);
+    void resetProcessedFlags(const std::string &database_name, const std::string &collection_name);
     std::string extractContentFromIndexDocument(const bson_t *document);
     std::string extractIndexFromIndexDocument(const bson_t *document);
     Document extractDocument(const bson_t*document);

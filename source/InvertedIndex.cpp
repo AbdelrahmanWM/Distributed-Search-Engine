@@ -10,6 +10,7 @@ InvertedIndex::InvertedIndex(DataBase *&db, const std::string &database_name, co
 
 void InvertedIndex::run(bool clear)
 {
+    std::lock_guard<std::mutex> runLock(m_run_mutex);
     m_stopRequest = false;
     m_clearHistory = false;
     std::vector<bson_t *> documents{};
@@ -20,6 +21,8 @@ void InvertedIndex::run(bool clear)
         if (clear)
         {
             m_db->clearCollection(m_database_name, m_collection_name);
+            // otherwise a clear rebuild indexes nothing: every document is still marked processed
+            m_db->resetProcessedFlags(m_database_name, m_documents_collection_name);
         }
         else
         {
@@ -27,8 +30,15 @@ void InvertedIndex::run(bool clear)
             retrieveExistingMetadataDocument();
         }
         int numberOfDocuments = m_db->getCollectionDocumentCount(m_database_name, m_documents_collection_name, BCON_NEW("processed", BCON_BOOL(false)));
+        if (numberOfDocuments < 0)
+        {
+            // the count only fails when the database is unreachable; continuing
+            // would overwrite good metadata with an empty document
+            std::cerr << "Aborting index run: cannot reach the database.\n";
+            return;
+        }
 
-        int numberOfDocumentsToIndex = std::min(1000, (numberOfDocuments / (m_number_of_threads)));
+        int numberOfDocumentsToIndex = std::max(1, std::min(1000, numberOfDocuments / m_number_of_threads));
         {
             ThreadPool thread_pool{m_number_of_threads};
             std::vector<bson_t *> documents;
@@ -41,11 +51,16 @@ void InvertedIndex::run(bool clear)
                 documents = m_db->getLimitedDocuments(m_database_name, m_documents_collection_name, numberOfDocumentsToIndex, BCON_NEW("processed", BCON_BOOL(false)));
                 if (documents.empty())
                 {
-                    return;
+                    break; // returning here skipped saveMetadataDocument, leaving stale metadata
                 }
                 m_db->markDocumentsProcessed(documents, m_database_name, m_documents_collection_name);
                 thread_pool.enqueue([this, documents]
-                                    { this->index(std::move(documents)); });
+                                    {
+                                    // an escaped exception in a pool thread calls std::terminate
+                                    // and kills the whole server
+                                    try { this->index(std::move(documents)); }
+                                    catch (const std::exception &ex) { std::cerr << "Indexer worker stopped: " << ex.what() << '\n'; }
+                                    catch (...) { std::cerr << "Indexer worker stopped: unknown error\n"; } });
 
                 numberOfDocuments -= numberOfDocumentsToIndex;
             }
@@ -290,6 +305,13 @@ void InvertedIndex::extractInvertedIndexDocument(bson_t *&document, std::unorder
 
 void InvertedIndex::saveMetadataDocument()
 {
+    if (m_document_metadata.total_documents <= 0 && m_document_metadata.doc_lengths.empty())
+    {
+        // clear-then-insert of empty metadata would destroy the stored document,
+        // which happens when a run starts while the database is unreachable
+        std::cerr << "Skipping metadata save: nothing to write.\n";
+        return;
+    }
     bson_t *bson = bson_new();
 
     try

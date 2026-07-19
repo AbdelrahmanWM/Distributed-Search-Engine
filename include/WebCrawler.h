@@ -58,6 +58,7 @@ private:
 	std::mutex m_frontier_mutex;
 	std::mutex m_crawled_pages_mutex;
 	std::mutex m_stop_mutex;
+	std::mutex m_run_mutex; // serializes whole crawl runs; terminate() stays lock-free
 	std::atomic<bool> m_stopRequested{};
 	std::atomic<bool> m_clearRecord {};
 	std::condition_variable m_stop_condition;

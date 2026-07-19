@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ServicesProvider } from '../state/services';
+import { ServicesProvider, ToastHost } from '../state/services';
 import EngineRoom from './EngineRoom';
 
 const fetchMock = vi.fn();
@@ -14,11 +14,11 @@ beforeEach(() => {
 describe('EngineRoom / CrawlerPanel', () => {
   it('starts a crawl with seed urls and page count', async () => {
     fetchMock.mockResolvedValue(new Response('Successfully crawled the pages', { status: 200 }));
-    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+    render(<ServicesProvider><EngineRoom visible={false} /></ServicesProvider>);
 
-    const seedInput = screen.getByPlaceholderText('https://…');
-    await userEvent.clear(seedInput);
-    await userEvent.type(seedInput, 'https://example.com');
+    const seedBox = screen.getByLabelText('seed urls');
+    await userEvent.clear(seedBox);
+    await userEvent.type(seedBox, 'https://example.com');
     const pages = screen.getByLabelText(/pages/i);
     await userEvent.clear(pages);
     await userEvent.type(pages, '25');
@@ -31,10 +31,58 @@ describe('EngineRoom / CrawlerPanel', () => {
     expect(JSON.parse(init.body)).toEqual({ seedUrls: ['https://example.com'], numberOfPages: 25 });
   });
 
+  it('persists textarea seeds to localStorage as an array and shows a count', async () => {
+    render(<ServicesProvider><EngineRoom visible={false} /></ServicesProvider>);
+
+    const seedBox = screen.getByLabelText('seed urls');
+    await userEvent.clear(seedBox);
+    await userEvent.type(seedBox, 'https://a.com{enter}https://b.com');
+
+    expect(JSON.parse(localStorage.getItem('distirolis.seedUrls')!)).toEqual([
+      'https://a.com',
+      'https://b.com',
+    ]);
+    expect(screen.getByText('2 seed URLs')).toBeInTheDocument();
+  });
+
+  it('loads seed urls from a .txt file into the textarea', async () => {
+    fetchMock.mockResolvedValue(new Response('Successfully crawled the pages', { status: 200 }));
+    render(<ServicesProvider><EngineRoom visible={false} /><ToastHost /></ServicesProvider>);
+
+    const file = new File(['https://one.com\nhttps://two.com\n'], 'seedUrls.txt', { type: 'text/plain' });
+    fireEvent.change(screen.getByLabelText('seed file'), { target: { files: [file] } });
+
+    await screen.findByText('Loaded 2 seed URLs from seedUrls.txt');
+    expect(screen.getByLabelText('seed urls')).toHaveValue('https://one.com\nhttps://two.com');
+    expect(JSON.parse(localStorage.getItem('distirolis.seedUrls')!)).toEqual([
+      'https://one.com',
+      'https://two.com',
+    ]);
+
+    await userEvent.click(screen.getByRole('button', { name: /^crawl$/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).seedUrls).toEqual([
+      'https://one.com',
+      'https://two.com',
+    ]);
+  });
+
+  it('rejects a seed file with no urls and keeps the textarea unchanged', async () => {
+    render(<ServicesProvider><EngineRoom visible={false} /><ToastHost /></ServicesProvider>);
+
+    const seedBox = screen.getByLabelText('seed urls');
+    const before = (seedBox as HTMLTextAreaElement).value;
+    const file = new File(['   \n\n  '], 'empty.txt', { type: 'text/plain' });
+    fireEvent.change(screen.getByLabelText('seed file'), { target: { files: [file] } });
+
+    await screen.findByText('No seed URLs found in empty.txt.');
+    expect(seedBox).toHaveValue(before);
+  });
+
   it('locks crawl buttons while a crawl runs and keeps terminate available', async () => {
     let resolveCrawl!: (r: Response) => void;
     fetchMock.mockReturnValue(new Promise((res) => (resolveCrawl = res)));
-    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+    render(<ServicesProvider><EngineRoom visible={false} /></ServicesProvider>);
 
     await userEvent.click(screen.getByRole('button', { name: /^crawl$/i }));
     expect(screen.getByRole('button', { name: /^crawl$/i })).toBeDisabled();
@@ -48,18 +96,18 @@ describe('EngineRoom / CrawlerPanel', () => {
 
   it('clear history requires arming the confirm button', async () => {
     fetchMock.mockResolvedValue(new Response('Successfully cleared crawl history.', { status: 200 }));
-    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+    render(<ServicesProvider><EngineRoom visible={false} /></ServicesProvider>);
 
-    await userEvent.click(screen.getByRole('button', { name: /clear crawl history/i }));
+    await userEvent.click(screen.getByRole('button', { name: /delete all crawled pages/i }));
     expect(fetchMock).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: /really clear/i }));
+    await userEvent.click(screen.getByRole('button', { name: /really delete/i }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(fetchMock.mock.calls[0][1].method).toBe('DELETE');
   });
 
   it('builds the index with the clear flag', async () => {
     fetchMock.mockResolvedValue(new Response('Successfully created Inverted Index', { status: 200 }));
-    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+    render(<ServicesProvider><EngineRoom visible={false} /></ServicesProvider>);
 
     await userEvent.click(screen.getByLabelText(/clear existing index before build/i));
     await userEvent.click(screen.getByRole('button', { name: /build index/i }));
@@ -72,7 +120,7 @@ describe('EngineRoom / CrawlerPanel', () => {
 
   it('terminates indexing with clear-history flag', async () => {
     fetchMock.mockResolvedValue(new Response('Successfully terminated indexing process', { status: 200 }));
-    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+    render(<ServicesProvider><EngineRoom visible={false} /></ServicesProvider>);
 
     await userEvent.click(screen.getByRole('button', { name: /terminate indexing/i }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -83,7 +131,7 @@ describe('EngineRoom / CrawlerPanel', () => {
 
   it('applies ranker parameters and persists them', async () => {
     fetchMock.mockResolvedValue(new Response('Successfully set new Ranker parameters', { status: 200 }));
-    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+    render(<ServicesProvider><EngineRoom visible={false} /></ServicesProvider>);
 
     const k1 = screen.getByLabelText('BM25_K1 value');
     await userEvent.clear(k1);
@@ -99,7 +147,7 @@ describe('EngineRoom / CrawlerPanel', () => {
   });
 
   it('reset restores ranker defaults in the form', async () => {
-    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+    render(<ServicesProvider><EngineRoom visible={false} /></ServicesProvider>);
     const k1 = screen.getByLabelText('BM25_K1 value');
     await userEvent.clear(k1);
     await userEvent.type(k1, '2.9');
@@ -110,7 +158,7 @@ describe('EngineRoom / CrawlerPanel', () => {
 
   it('sets thread count', async () => {
     fetchMock.mockResolvedValue(new Response('Successfully updated threads number.', { status: 200 }));
-    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+    render(<ServicesProvider><EngineRoom visible={false} /></ServicesProvider>);
 
     const threads = screen.getByLabelText(/threads value/i);
     await userEvent.clear(threads);
@@ -125,7 +173,7 @@ describe('EngineRoom / CrawlerPanel', () => {
 
   it('changes the engine base url via the connection row', async () => {
     fetchMock.mockResolvedValue(new Response('ok', { status: 200 }));
-    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+    render(<ServicesProvider><EngineRoom visible={false} /></ServicesProvider>);
 
     const urlInput = screen.getByLabelText(/engine url/i);
     await userEvent.clear(urlInput);
@@ -139,7 +187,7 @@ describe('EngineRoom / CrawlerPanel', () => {
 
   it('shows api calls in the activity log', async () => {
     fetchMock.mockResolvedValue(new Response('Successfully created Inverted Index', { status: 200 }));
-    render(<ServicesProvider><EngineRoom /></ServicesProvider>);
+    render(<ServicesProvider><EngineRoom visible={false} /></ServicesProvider>);
 
     await userEvent.click(screen.getByRole('button', { name: /build index/i }));
 

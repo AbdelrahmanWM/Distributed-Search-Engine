@@ -1,4 +1,5 @@
 #include "SearchEngineServer.h"
+#include "LogBuffer.h"
 #include "crow/middlewares/cors.h"
 #include <functional>
 #include <string>
@@ -15,6 +16,9 @@ SearchEngineServer::~SearchEngineServer()
 void SearchEngineServer::start()
 {
     crow::App<crow::CORSHandler> app;
+    // stderr is teed into /logs; without this, Crow's per-request INFO lines would
+    // make the logs panel record its own polling forever
+    app.loglevel(crow::LogLevel::Warning);
 
     auto &cors = app.get_middleware<crow::CORSHandler>();
     cors.global()
@@ -35,6 +39,7 @@ void SearchEngineServer::start()
     CROW_ROUTE(app, "/setRankerParameters").methods(crow::HTTPMethod::Put)(std::bind(&SearchEngineServer::setRankerParameters, this, _1));
     CROW_ROUTE(app, "/clearCrawlHistory").methods(crow::HTTPMethod::Delete)(std::bind(&SearchEngineServer::clearCrawlHistory, this, _1));
     CROW_ROUTE(app, "/indexDocuments_terminate").methods(crow::HTTPMethod::Put)(std::bind(&SearchEngineServer::index_terminate, this, _1));
+    CROW_ROUTE(app, "/logs").methods(crow::HTTPMethod::Get)(std::bind(&SearchEngineServer::getLogs, this, _1));
     app.port(8080).multithreaded().run();
 }
 
@@ -479,4 +484,30 @@ std::string SearchEngineServer::getAPIDocumentationHTMLPage()
 
     )";
     return HTMLPage;
+}
+
+crow::response SearchEngineServer::getLogs(const crow::request &req)
+{
+    try
+    {
+        long after = 0;
+        if (req.url_params.get("after") != nullptr)
+        {
+            after = std::stol(req.url_params.get("after"));
+        }
+        std::vector<LogLine> lines = LogBuffer::linesAfter(after);
+        crow::json::wvalue result;
+        result["lines"] = crow::json::wvalue::list();
+        for (size_t i = 0; i < lines.size(); i++)
+        {
+            result["lines"][i]["id"] = static_cast<int64_t>(lines[i].id);
+            result["lines"][i]["time"] = lines[i].time;
+            result["lines"][i]["text"] = lines[i].text;
+        }
+        return crow::response(200, result);
+    }
+    catch (std::exception &ex)
+    {
+        return crow::response(404, ex.what());
+    }
 }

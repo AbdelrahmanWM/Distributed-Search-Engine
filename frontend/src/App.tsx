@@ -31,7 +31,12 @@ export default function App() {
         <span style={{ width: 120 }} />
       </nav>
       <OfflineBanner />
-      {realm === 'search' ? <SearchRealm /> : <EngineRoom />}
+      <div style={{ display: realm === 'search' ? undefined : 'none' }}>
+        <SearchRealm />
+      </div>
+      <div style={{ display: realm === 'engine' ? undefined : 'none' }}>
+        <EngineRoom visible={realm === 'engine'} />
+      </div>
       <ToastHost />
     </div>
   );
