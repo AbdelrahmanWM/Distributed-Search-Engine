@@ -1,56 +1,50 @@
-# Distirolis - Concurrent Search Engine
+# Distirolis
 
-## Overview
-Distirolis is a high-performance search engine featuring a concurrent web crawler developed in C++. It utilizes libcurl and MongoDB for efficient indexing and search capabilities.
+A search engine built from scratch in C++. It crawls the real web, builds a positional inverted index, ranks with BM25, and answers boolean queries with highlighted snippets. A React control room drives the whole engine live in the browser.
 
-## Features
-- **Concurrent Web Crawler**: Developed using libcurl for fast and efficient page crawling.
-- **Search Capabilities**: Implemented logical operations and BM25 ranking, adhering to the robots.txt protocol.
-- **Performance**: Successfully crawled 10,000 pages in 5 minutes, showcasing high efficiency.
-- **API Management**: Created a Crow server (C++ library) to manage crawling, indexing, and search requests via API endpoints.
-- **Concurrency**: Utilized multithreading and condition variables to enhance the crawling process.
+![Search results for the query "science AND IBM"](assets/SearchQueryResult.jpg)
 
-## Technologies
-- **Programming Languages**: C++
-- **Build System**: CMake
-- **Database**: MongoDB
-- **Libraries**: libcurl, Crow, ASIO, libstemmer
+## What I built
 
-## CMake Configuration Summary
-The project uses CMake for build configuration. Key settings include:
+**A concurrent web crawler.** Worker threads pull from a shared frontier, fetch pages with libcurl, respect robots.txt, and stream results to MongoDB in small batches so an interrupted crawl loses almost nothing. It has crawled corpora of 10,000+ pages, and every run is resumable: visited URLs persist across sessions and already fetched pages are never refetched.
 
-- **C++ Standard**: C++20
-- **Dependencies**: Crow, ASIO, libcurl, libstemmer, MongoDB libraries.
-- **Platform-Specific Configurations**: Different paths and settings for Windows and Linux environments.
-- **Build Options**: Debug and Release modes with appropriate compiler options.
+**A positional inverted index.** Documents are tokenized with a linear scanner I wrote after profiling showed regex tokenization could not survive real web content, then normalized and stemmed with Snowball. The index stores every term position per document, which is what makes exact phrase matching and snippet highlighting possible. Indexing runs on a thread pool: 7,000 documents become 112,000+ unique terms in about three minutes on four threads.
 
-### Detailed CMakeLists.txt
-For a complete view of the project's CMake configuration, please refer to the `CMakeLists.txt` file in the root directory. This file includes detailed settings for project structure, source files, library dependencies, and platform-specific configurations.
+**BM25 ranking with a query language.** Queries support AND, OR, NOT, parentheses, and quoted exact phrases, evaluated with a shunting yard style operator engine over per document score maps. Phrase matches earn a configurable boost, term and exact match scores blend with tunable weights, and results come back sorted with a snippet centered on the best scoring window of query hits, each hit highlighted.
 
-### Build Instructions
-To build the project, make sure to have the necessary libraries and tools installed. Follow these steps:
+**An HTTP API.** A Crow server exposes the engine: search, crawl, index, terminate, ranker parameters, thread count, and a live log endpoint. Logs work through a custom streambuf that tees stdout and stderr into a thread safe in memory ring buffer, so the browser can stream exactly what the engine prints, including errors, with no file I/O.
 
-1. Clone the repository or download the source files.
-2. Create a build directory:
-   ```bash
-   mkdir build
-   cd build
-3. Run CMake:
-   ```bash
-   cmake ..
-4. Compile the project:
-   ```bash
-   make
+**A full web UI.** React 19 with TypeScript, covered by 44 component tests. The Search realm gives instant queries with scores, highlighted snippets, and an accuracy slider. The Engine Room drives everything else: bulk seed loading from a text file, crawl and index controls with confirm guards on destructive actions, a BM25 parameter lab, thread configuration, live engine logs polled every two seconds, and a per session activity table of every API call with timing.
 
-## Web UI
+![Engine Room with crawler, indexer, and BM25 ranker controls](assets/EnginePagePart2.jpg)
 
-A dark web interface for searching and operating the engine lives in `frontend/`.
+![Live engine logs and the API activity table](assets/EnginePagePart1.jpg)
 
-    cd frontend
-    npm install
-    npm run dev
+## Engineering I am proud of
 
-Open http://localhost:5173 with the engine running on port 8080. The **Search** realm
-queries the index (supports `AND`, `OR`, `NOT`, parentheses, and `"exact phrases"`);
-the **Engine Room** realm drives crawling, indexing, BM25 ranker tuning, and thread
-configuration, with a per-session activity log of every API call.
+The engine survives the real web. Getting there meant root causing genuine production class failures with gdb: a stack overflow inside std::regex on pathological pages, a segfault in thread local destructors during thread pool teardown, and data races on a shared MongoDB client across server threads. Each fix is in the history as its own commit with the reasoning in the message.
+
+The system degrades instead of dying. Worker threads carry exception barriers so one poisoned page skips rather than kills the process. If the database becomes unreachable mid run, index builds abort cleanly, metadata is never overwritten with emptiness, and the ranker keeps serving its in memory snapshot. Crawls flush work continuously so a hard kill costs at most one small batch.
+
+Correctness was verified end to end, not assumed: curl regression suites for query parsing and result ordering, concurrent load tests that previously crashed the server in seconds and now pass, and direct database audits after every recovery scenario.
+
+## Stack
+
+C++20, CMake, Crow, libcurl, libxml2, Snowball stemmer, MongoDB (mongoc), React 19, TypeScript, Vite, Vitest.
+
+## Run it
+
+Build the engine with CMake, then start it with your MongoDB connection string:
+
+```
+cmake -B build && cmake --build build
+./build/DistributedSearchEngine "<mongodb connection string>" "proxy"
+```
+
+Start the UI and open http://localhost:5173 with the engine on port 8080:
+
+```
+cd frontend
+npm install
+npm run dev
+```
