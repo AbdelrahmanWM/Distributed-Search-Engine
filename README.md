@@ -16,9 +16,9 @@ A search engine built from scratch in C++. It crawls the real web, builds a posi
 
 **A full web UI.** React 19 with TypeScript, covered by 44 component tests. The Search realm gives instant queries with scores, highlighted snippets, and an accuracy slider. The Engine Room drives everything else: bulk seed loading from a text file, crawl and index controls with confirm guards on destructive actions, a BM25 parameter lab, thread configuration, live engine logs polled every two seconds, and a per session activity table of every API call with timing.
 
-![Engine Room with crawler, indexer, and BM25 ranker controls](assets/EnginePagePart2.jpg)
+![Engine Room with crawler, indexer, and BM25 ranker controls](assets/EnginePagePart1.jpg)
 
-![Live engine logs and the API activity table](assets/EnginePagePart1.jpg)
+![Live engine logs and the API activity table](assets/EnginePagePart2.jpg)
 
 ## Engineering I am proud of
 
