@@ -43,7 +43,12 @@ void WebCrawler::run(int maximumNumberOfPagesToCrawl, std::queue<std::string> &s
 		for (int i = 0; i < m_number_of_threads; i++)
 		{
 			threadPool.enqueue([this, maximumNumberOfPagesToCrawl]
-							   { this->crawl(maximumNumberOfPagesToCrawl); });
+							   {
+								// an escaped exception in a pool thread calls std::terminate
+								// and kills the whole server
+								try { this->crawl(maximumNumberOfPagesToCrawl); }
+								catch (const std::exception &ex) { std::cerr << "Crawler worker stopped: " << ex.what() << '\n'; }
+								catch (...) { std::cerr << "Crawler worker stopped: unknown error\n"; } });
 		}
 	}
 	std::cout << "visited urls: " << m_visited_urls.size() << '\n';
@@ -96,19 +101,32 @@ void WebCrawler::crawl(int maximumNumberOfPagesToCrawl)
 			m_frontier.pop_front();
 			// }
 		}
-		if (isURLVisited(url))
-		{ // if already visited
-			continue;
-		}
-		if (URLParser::isDomainURL(url))
+		try
 		{
-			fetchRobotsTxtContent(curl, url);
+			if (isURLVisited(url))
+			{ // if already visited
+				continue;
+			}
+			if (URLParser::isDomainURL(url))
+			{
+				fetchRobotsTxtContent(curl, url);
+			}
+			std::string htmlContent = fetchPage(curl, url, m_use_proxy);
+			if (htmlContent == "")
+				continue;
+			parsePage(htmlContent, url, crawled_pages);
+			htmlContent.clear();
 		}
-		std::string htmlContent = fetchPage(curl, url, m_use_proxy);
-		if (htmlContent == "")
+		catch (const std::exception &ex)
+		{
+			std::cerr << "Skipping " << url << " after error: " << ex.what() << '\n';
 			continue;
-		parsePage(htmlContent, url, crawled_pages);
-		htmlContent.clear();
+		}
+		catch (...)
+		{
+			std::cerr << "Skipping " << url << " after unknown error\n";
+			continue;
+		}
 		if (crawled_pages.size() >= static_cast<size_t>(m_number_of_pages_to_save))
 		{
 			db.insertManyDocuments(crawled_pages, m_database_name, m_collection_name);

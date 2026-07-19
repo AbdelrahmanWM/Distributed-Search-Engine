@@ -1,17 +1,46 @@
 #include "WordProcessor.h"
 #include <iostream>
+#include <cctype>
 std::vector<std::string> WordProcessor::tokenize(const std::string &content)
 {
-    std::regex rgx{R"(\b[\w'-]+\b)"};
-    auto words_begin = std::sregex_iterator(content.begin(), content.end(), rgx);
-    auto words_end = std::sregex_iterator();
-    std::string token;
+    // Linear scan equivalent of the old \b[\w'-]+\b regex. std::regex recurses
+    // per character, so one long unbroken run (minified JS, base64) in a crawled
+    // page overflowed the thread stack and killed the server.
     std::vector<std::string> tokens;
-    for (std::sregex_iterator i = words_begin; i != words_end; ++i)
+    const auto isWordChar = [](unsigned char c)
+    { return std::isalnum(c) || c == '_'; };
+    const auto isTokenChar = [&](unsigned char c)
+    { return isWordChar(c) || c == '\'' || c == '-'; };
+
+    size_t i = 0;
+    const size_t n = content.size();
+    while (i < n)
     {
-        token = (*i).str();
-        // if(WordProcessor::isValidWord(token))// Temporary filtration step until better solution is found
-        tokens.push_back(token);
+        if (!isTokenChar(static_cast<unsigned char>(content[i])))
+        {
+            i++;
+            continue;
+        }
+        size_t start = i;
+        while (i < n && isTokenChar(static_cast<unsigned char>(content[i])))
+        {
+            i++;
+        }
+        size_t end = i;
+        // \b anchored both ends of the match to a word character, so trim
+        // leading/trailing apostrophes and hyphens
+        while (start < end && !isWordChar(static_cast<unsigned char>(content[start])))
+        {
+            start++;
+        }
+        while (end > start && !isWordChar(static_cast<unsigned char>(content[end - 1])))
+        {
+            end--;
+        }
+        if (end > start)
+        {
+            tokens.push_back(content.substr(start, end - start));
+        }
     }
     return tokens;
 }
@@ -33,22 +62,17 @@ std::string WordProcessor::stem(const std::string &word)
 {
     // sb_stemmer is not thread-safe, so keep one instance per thread and
     // reuse it across calls instead of allocating a new stemmer per word.
-    struct StemmerHolder
-    {
-        sb_stemmer *stemmer = sb_stemmer_new("english", nullptr);
-        ~StemmerHolder()
-        {
-            if (stemmer)
-                sb_stemmer_delete(stemmer);
-        }
-    };
-    thread_local StemmerHolder holder;
-    if (!holder.stemmer)
+    // Deliberately never sb_stemmer_delete it: MinGW's thread_local destructor
+    // path (tls_atexit run_dtor_list) segfaults inside sb_stemmer_delete when
+    // pool threads exit together, killing the whole server. Leaking one small
+    // stemmer per exiting thread is harmless by comparison.
+    thread_local sb_stemmer *stemmer = sb_stemmer_new("english", nullptr);
+    if (!stemmer)
     {
         throw std::runtime_error("Failed to create stemmer.");
     }
     const sb_symbol *input = reinterpret_cast<const sb_symbol *>(word.c_str());
-    const sb_symbol *stemmed = sb_stemmer_stem(holder.stemmer, input, word.length());
+    const sb_symbol *stemmed = sb_stemmer_stem(stemmer, input, word.length());
 
     if (!stemmed)
     {

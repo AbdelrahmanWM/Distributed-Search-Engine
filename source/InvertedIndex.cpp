@@ -48,7 +48,12 @@ void InvertedIndex::run(bool clear)
                 }
                 m_db->markDocumentsProcessed(documents, m_database_name, m_documents_collection_name);
                 thread_pool.enqueue([this, documents]
-                                    { this->index(std::move(documents)); });
+                                    {
+                                    // an escaped exception in a pool thread calls std::terminate
+                                    // and kills the whole server
+                                    try { this->index(std::move(documents)); }
+                                    catch (const std::exception &ex) { std::cerr << "Indexer worker stopped: " << ex.what() << '\n'; }
+                                    catch (...) { std::cerr << "Indexer worker stopped: unknown error\n"; } });
 
                 numberOfDocuments -= numberOfDocumentsToIndex;
             }
