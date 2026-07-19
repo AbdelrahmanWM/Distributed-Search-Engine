@@ -32,6 +32,8 @@ void WebCrawler::run(int maximumNumberOfPagesToCrawl, std::queue<std::string> &s
 	m_number_of_pages_to_save = std::max(1, std::min(100, maximumNumberOfPages / m_number_of_threads));
 	m_crawled_pages_number = 0;
 	m_clearRecord = false;
+	// a Terminate pressed while idle must not poison this run with a stale stop flag
+	m_stopRequested = false;
 	auto start = std::chrono::high_resolution_clock::now();
 	addSeedUrls(seedUrls);
 	retrieveVisitedUrls();
